@@ -23,10 +23,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.NotThreadSafe;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * A greedy allocator that returns the first Storage dir fitting the size of block to allocate. This
- * class serves as an example how to implement an allocator.
+ * A greedy allocator that returns the first Storage dir fitting the size of block to allocate.
  */
 @NotThreadSafe
 public final class GreedyAllocator implements Allocator {
@@ -45,6 +46,9 @@ public final class GreedyAllocator implements Allocator {
     mReviewer = Reviewer.Factory.create();
   }
 
+  /**
+   * {@inheritDoc}
+   */
   @Override
   public StorageDirView allocateBlockWithView(long sessionId, long blockSize,
       BlockStoreLocation location, BlockMetadataView metadataView, boolean skipReview) {
@@ -53,29 +57,27 @@ public final class GreedyAllocator implements Allocator {
   }
 
   /**
-   * Allocates a block from the given block store location. The location can be a specific location,
-   * or {@link BlockStoreLocation#anyTier()} or {@link BlockStoreLocation#anyDirInTier(String)}.
+   * Allocates a block from the given block store location.
    *
    * @param sessionId the id of session to apply for the block allocation
    * @param blockSize the size of block in bytes
    * @param location the location in block store
-   * @return a {@link StorageDirView} in which to create the temp block meta if success,
-   *         null otherwise
+   * @param skipReview whether to skip review when allocating
+   * @return a {@link StorageDirView} if allocation succeeds, null otherwise
    */
   @Nullable
   private StorageDirView allocateBlock(long sessionId, long blockSize,
       BlockStoreLocation location, boolean skipReview) {
     Preconditions.checkNotNull(location, "location");
     if (location.equals(BlockStoreLocation.anyTier())) {
-      // When any tier is ok, loop over all tier views and dir views,
-      // and return a temp block meta from the first available dirview.
       for (StorageTierView tierView : mMetadataView.getTierViews()) {
-        for (StorageDirView dirView : tierView.getDirViews()) {
+        List<StorageDirView> sortedDirs = new ArrayList<>(tierView.getDirViews());
+        sortedDirs.sort((a, b) -> Integer.compare(a.getDirViewIndex(), b.getDirViewIndex()));
+        for (StorageDirView dirView : sortedDirs) {
           if (dirView.getAvailableBytes() >= blockSize) {
             if (skipReview || mReviewer.acceptAllocation(dirView)) {
               return dirView;
             } else {
-              // The allocation is rejected. Try the next dir.
               LOG.debug("Allocation rejected for anyTier: {}", dirView.toBlockStoreLocation());
             }
           }
@@ -88,13 +90,14 @@ public final class GreedyAllocator implements Allocator {
     if (!mediumType.equals(BlockStoreLocation.ANY_MEDIUM)
         && location.equals(BlockStoreLocation.anyDirInAnyTierWithMedium(mediumType))) {
       for (StorageTierView tierView : mMetadataView.getTierViews()) {
-        for (StorageDirView dirView : tierView.getDirViews()) {
+        List<StorageDirView> sortedDirs = new ArrayList<>(tierView.getDirViews());
+        sortedDirs.sort((a, b) -> Integer.compare(a.getDirViewIndex(), b.getDirViewIndex()));
+        for (StorageDirView dirView : sortedDirs) {
           if (dirView.getMediumType().equals(mediumType)
               && dirView.getAvailableBytes() >= blockSize) {
             if (skipReview || mReviewer.acceptAllocation(dirView)) {
               return dirView;
             } else {
-              // Try the next dir
               LOG.debug("Allocation rejected for anyDirInTierWithMedium: {}",
                       dirView.toBlockStoreLocation());
             }
@@ -107,13 +110,13 @@ public final class GreedyAllocator implements Allocator {
     String tierAlias = location.tierAlias();
     StorageTierView tierView = mMetadataView.getTierView(tierAlias);
     if (location.equals(BlockStoreLocation.anyDirInTier(tierAlias))) {
-      // Loop over all dir views in the given tier
-      for (StorageDirView dirView : tierView.getDirViews()) {
+      List<StorageDirView> sortedDirs = new ArrayList<>(tierView.getDirViews());
+      sortedDirs.sort((a, b) -> Integer.compare(a.getDirViewIndex(), b.getDirViewIndex()));
+      for (StorageDirView dirView : sortedDirs) {
         if (dirView.getAvailableBytes() >= blockSize) {
           if (skipReview || mReviewer.acceptAllocation(dirView)) {
             return dirView;
           } else {
-            // Try the next dir
             LOG.debug("Allocation rejected for anyDirInTier: {}",
                     dirView.toBlockStoreLocation());
           }
@@ -122,8 +125,6 @@ public final class GreedyAllocator implements Allocator {
       return null;
     }
 
-    // For allocation in a specific directory, we are not checking the reviewer,
-    // because we do not want the reviewer to reject it.
     int dirIndex = location.dir();
     StorageDirView dirView = tierView.getDirView(dirIndex);
     if (dirView != null && dirView.getAvailableBytes() >= blockSize) {
