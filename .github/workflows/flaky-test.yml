@@ -1,14 +1,15 @@
-name: Run NonDex to Check Flaky Test
+name: Run Flaky Test (with or without NonDex)
 
 on:
-  push:
-    branches: [check-flaky]
-  pull_request:
-    branches: [check-flaky]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode: nondex or regular'
+        required: true
+        default: 'nondex'
 
 jobs:
-  flaky-test-check:
+  flaky-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,11 +22,16 @@ jobs:
         distribution: 'temurin'
         java-version: '11'
 
-    - name: Install Maven dependencies (skip tests)
+    - name: Build dependencies
       run: mvn clean install -DskipTests -pl core/server/worker -am
 
-    - name: Run NonDex to detect flaky test
+    - name: Run flaky test (based on mode)
       run: |
-        mvn -pl core/server/worker edu.illinois:nondex-maven-plugin:2.1.1:nondex \
-          -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock \
-          -DnondexRuns=20
+        if [ "${{ github.event.inputs.mode }}" = "nondex" ]; then
+          mvn -pl core/server/worker edu.illinois:nondex-maven-plugin:2.1.1:nondex \
+            -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock \
+            -DnondexRuns=20
+        else
+          mvn -pl core/server/worker test \
+            -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock
+        fi
