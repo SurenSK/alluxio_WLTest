@@ -1,0 +1,37 @@
+name: Run Flaky Test (flex version)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Choose mode: nondex or regular'
+        required: true
+        default: 'nondex'
+
+jobs:
+  flaky-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Java 11
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Build dependencies
+      run: mvn clean install -DskipTests -pl core/server/worker -am
+
+    - name: Run flaky test (based on mode)
+      run: |
+        if [ "${{ github.event.inputs.mode }}" = "nondex" ]; then
+          mvn -pl core/server/worker edu.illinois:nondex-maven-plugin:2.1.1:nondex \
+            -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock \
+            -DnondexRuns=20
+        else
+          mvn -pl core/server/worker test \
+            -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock
+        fi
