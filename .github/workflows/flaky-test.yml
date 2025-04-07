@@ -1,0 +1,31 @@
+name: Run NonDex to Check Flaky Test
+
+on:
+  push:
+    branches: [check-flaky]
+  pull_request:
+    branches: [check-flaky]
+  workflow_dispatch:
+
+jobs:
+  flaky-test-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Java 11
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Install Maven dependencies (skip tests)
+      run: mvn clean install -DskipTests -pl core/server/worker -am
+
+    - name: Run NonDex to detect flaky test
+      run: |
+        mvn -pl core/server/worker edu.illinois:nondex-maven-plugin:2.1.1:nondex \
+          -Dtest=alluxio.worker.block.allocator.GreedyAllocatorTest#allocateBlock \
+          -DnondexRuns=20
