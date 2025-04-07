@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Run mode: nondex or regular'
+        description: 'Choose mode: nondex or regular'
         required: true
         default: 'nondex'
 
